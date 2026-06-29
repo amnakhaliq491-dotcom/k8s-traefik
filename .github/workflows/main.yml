@@ -26,11 +26,13 @@ jobs:
     environment: production
 
     steps:
+      # ── 1. Checkout app source ───────────────────────────────────────────
       - name: Checkout app source
         uses: actions/checkout@v4
         with:
           path: app
 
+      # ── 2. Checkout K8s manifests ────────────────────────────────────────
       - name: Checkout K8s manifests
         uses: actions/checkout@v4
         with:
@@ -38,21 +40,25 @@ jobs:
           path: manifests
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Authenticate to GCP via Workload Identity
+      # ── 3. Authenticate to GCP via Workload Identity Federation ──────────
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
+      # ── 4. Set up gcloud ─────────────────────────────────────────────────
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
 
+      # ── 5. Configure Docker ───────────────────────────────────────────────
       - name: Configure Docker for Artifact Registry
         run: |
           gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
+      # ── 6. Build & Push image ─────────────────────────────────────────────
       - name: Build and Push Docker image
         run: |
           IMAGE_URI="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE }}"
@@ -64,6 +70,7 @@ jobs:
           docker push "${IMAGE_URI}:latest"
           echo "IMAGE_URI=${IMAGE_URI}:${{ github.sha }}" >> $GITHUB_ENV
 
+      # ── 7. Get GKE credentials ────────────────────────────────────────────
       - name: Install gke-gcloud-auth-plugin
         run: gcloud components install gke-gcloud-auth-plugin --quiet
 
@@ -74,41 +81,34 @@ jobs:
           location: ${{ env.REGION }}
           project_id: ${{ env.PROJECT_ID }}
 
+      # ── 8. Ensure namespace ───────────────────────────────────────────────
       - name: Ensure namespace
         run: |
           kubectl get namespace ${{ env.NAMESPACE }} \
             || kubectl create namespace ${{ env.NAMESPACE }}
 
-      - name: Sync APP_ENV from Secret Manager to K8s
-        run: |
-          gcloud secrets versions access latest \
-            --secret=APP_ENV \
-            --project=${{ env.PROJECT_ID }} > /tmp/app.env
-
-          kubectl create secret generic app-secrets \
-            --namespace=${{ env.NAMESPACE }} \
-            --from-env-file=/tmp/app.env \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-          rm /tmp/app.env
-
+      # ── 9. Apply ClusterIssuer ────────────────────────────────────────────
       - name: Apply ClusterIssuer
         run: kubectl apply -f manifests/k8s/cluster-issuer.yaml
 
+      # ── 10. Deploy to GKE ─────────────────────────────────────────────────
       - name: Deploy to GKE
         run: |
           sed "s|IMAGE_PLACEHOLDER|${{ env.IMAGE_URI }}|g" \
             manifests/k8s/deployment.yaml | kubectl apply -f -
 
+      # ── 11. Apply Ingress ──────────────────────────────────────────────────
       - name: Apply Ingress
         run: kubectl apply -f manifests/k8s/ingress.yaml
 
+      # ── 12. Wait for rollout ───────────────────────────────────────────────
       - name: Wait for rollout
         run: |
           kubectl rollout status deployment/backend-api \
             --namespace=${{ env.NAMESPACE }} \
             --timeout=300s
 
+      # ── 13. Verify deployment ──────────────────────────────────────────────
       - name: Verify deployment
         run: |
           echo " Pods:"
@@ -117,3 +117,5 @@ jobs:
           kubectl get certificate -n ${{ env.NAMESPACE }}
           echo " Ingress:"
           kubectl get ingress -n ${{ env.NAMESPACE }}
+          echo " Services:"
+          kubectl get svc -n ${{ env.NAMESPACE }}
