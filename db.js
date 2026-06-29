@@ -1,7 +1,4 @@
 import mongoose from "mongoose";
-import { createRequire } from "module";
-
-
 import { loadEnvFromSecret } from "./loadsecret.js";
 
 await loadEnvFromSecret("APP_ENV");
