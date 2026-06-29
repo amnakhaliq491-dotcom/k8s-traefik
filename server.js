@@ -39,7 +39,11 @@ const upload = multer({
 app.get("/", (req, res) => {
   res.json({
     message: "Backend API is running",
-    
+    version: "1.0.0",
+    endpoints: {
+      allProducts: "GET /api/allproducts",
+      uploadProduct: "POST /api/products/upload",
+    },
   });
 });
 
