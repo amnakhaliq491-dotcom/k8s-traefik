@@ -79,15 +79,18 @@ jobs:
           kubectl get namespace ${{ env.NAMESPACE }} \
             || kubectl create namespace ${{ env.NAMESPACE }}
 
-      - name: Sync MONGO_URI from Secret Manager to K8s
+      - name: Sync APP_ENV from Secret Manager to K8s
         run: |
-          MONGO_URI=$(gcloud secrets versions access latest \
-            --secret=MONGO_URI \
-            --project=${{ env.PROJECT_ID }})
+          gcloud secrets versions access latest \
+            --secret=APP_ENV \
+            --project=${{ env.PROJECT_ID }} > /tmp/app.env
+
           kubectl create secret generic app-secrets \
             --namespace=${{ env.NAMESPACE }} \
-            --from-literal=MONGO_URI="${MONGO_URI}" \
+            --from-env-file=/tmp/app.env \
             --dry-run=client -o yaml | kubectl apply -f -
+
+          rm /tmp/app.env
 
       - name: Apply ClusterIssuer
         run: kubectl apply -f manifests/k8s/cluster-issuer.yaml
