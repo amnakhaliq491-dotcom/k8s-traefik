@@ -1,9 +1,12 @@
 import mongoose from "mongoose";
-import dotenv from "dotenv";
+import { createRequire } from "module";
 
-dotenv.config();
+const require = createRequire(import.meta.url);
+const { loadEnvFromSecret } = require("./loadsecret.js");
+
+await loadEnvFromSecret("APP_ENV");
 
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log("Mongo error:", err));
+  .then(() => console.log("MongoDB connected successfully"))
+  .catch((err) => console.error("Mongo error:", err));
